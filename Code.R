@@ -1,0 +1,1119 @@
+library(tidyverse)
+library(Kendall)
+library(readr)
+library(forecast)
+library(astsa)
+library(xts)
+library(broom)
+library(trend)
+library(gt)
+library(modifiedmk)
+library(trendchange)
+library(car)
+library(lmtest)
+library(ggtext)
+library(glue)
+library(outliers)
+library(Hmisc)
+library(gt)
+theme_set(theme_minimal())
+
+
+afgooye <- read_csv("Afgooye.csv")
+qoryooley <- read_csv("Qoryooley.csv")
+
+glimpse(afgooye)
+
+
+afgoye_wt_tes <- tibble(
+  Station = c('Afgoye'),
+  Data = c('Annual', 'Jilal', "Haga", 'Deyr', "Gu"),
+  `Durban-Watson Statistic` = c( 'DW = 1.785', 'DW = 1.903', 'DW = 1.241', "DW = 2.588", "DW = 1.813"),
+  `P-Value` = c('0.195', '0.316', '0.004', '0.959', '0.2211')
+)
+
+afgoye_wt_tes |> 
+  gt(id='two') |> 
+  fmt_number(
+    columns = everything(),
+    rows = everything(),
+    decimals = 4
+  ) |> 
+  cols_align(align = 'center') |> 
+  tab_options(table.width = pct(70))
+
+
+########################################################################
+Qoryoley_dw_test <- tibble(
+  Station = c('Qoryoley'),
+  Data = c('Annual', 'Jilal', "Haga", 'Deyr', "Gu"),
+  `Durban-Watson Statistic` = c( 'DW = 1.875', 'DW = 1.924', 'DW = 0.851', "DW = 2.520", "DW = 1.902"),
+  `P-Value` = c('0.284', '0.339', '0.000', '0.938', '0.314')
+)
+
+
+Qoryoley_dw_test |> 
+  gt(id='two') |> 
+  fmt_number(
+    columns = everything(),
+    rows = everything(),
+    decimals = 4
+  ) |> 
+  cols_align(align = 'center') |> 
+  tab_options(table.width = pct(70))
+
+qoryoley_lm <- lm(`Gu'` ~ YEAR, qoryooley)
+
+durbinWatsonTest(qoryoley_lm)
+dwtest(qoryoley_lm)
+
+afgoye_lm <- lm(`Gu'` ~ year, afgooye)
+
+durbinWatsonTest(afgoye_lm)
+dwtest(afgoye_lm)
+
+afgoye_trend_tes <- ts(afgooye$ANN, start = 1981, frequency = 1)
+
+
+afgoye_deyr <- ts(afgooye$Jilaal, start = 1981, frequency = 1)
+
+MannKendall(afgoye_deyr)
+options(scipen = 999)
+afgooye_df <- afgooye |> 
+  pivot_longer(cols = JAN:DEC, names_to = 'months',
+               values_to = 'precipitation')
+
+afgooye_seasonal <- afgooye |> 
+  pivot_longer(cols = Jilaal:Deyr,
+               names_to = 'seasons', 
+               values_to = 'precipitation')
+
+
+afgooye_seasonal |> 
+  glimpse()
+
+afgooye_df |> 
+  glimpse()
+
+afgooye_seasonal |> 
+  group_by(year, seasons) |> 
+  summarise(average_pre = mean(precipitation)) |> 
+  ggplot(aes(year, average_pre)) +
+  geom_line() +
+  facet_wrap(~ seasons) + geom_point() +
+  geom_smooth(method = lm, se=FALSE, aes(group = 1), col='blue') +
+  labs(title = 'Afgoye Data',
+       subtitle = 'Average Seasonal varaions of rainfall')
+
+afgooye_df |> 
+  ggplot(aes(year, ANN)) + geom_point() +
+  geom_line() +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = 'Afgoye Data',
+       y = 'Average Annual Rainfall',
+       subtitle = 'Average  annual  rainfall for over 40 years')
+
+afgoye_annul <- afgooye_df |> 
+  distinct(year, .keep_all = TRUE) 
+
+
+afgoye_annual_ts <- ts(afgoye_annul$ANN, start = 1981, 
+                       frequency = 1)
+
+afgoye_ts <- ts(afgooye_df$precipitation, start = 1981, frequency = 12)
+
+afgooye_df
+
+MannKendall(afgooye_df$Jilaal)
+MannKendall(afgooye_df$`Gu'`)
+MannKendall(afgooye_df$Hagaa)
+MannKendall(afgooye_df$Deyr)
+
+MannKendall(afgoye_ts)
+
+MannKendall(afgoye_annual_ts)
+
+autoplot(afgoye_annual_ts)
+
+auto.arima(afgoye_annual_ts)
+
+pre_whiting_m <- arima(afgoye_annual_ts, order = c(1, 0, 0))
+
+checkresiduals(pre_whiting_m)
+
+pre_whetining_data <- residuals(pre_whiting_m)
+
+MannKendall(pre_whetining_data)
+
+
+
+sens.slope(pre_whetining_data)
+
+sarima(afgoye_annual_ts, 1, 0, 0)
+
+sarima(afgoye_ts, 1, 0, 0)
+
+afgooye_df |> 
+  glimpse()
+
+afgoye_tiblle <- afgooye_df |> 
+  mutate(date =ymd(year, truncated = 2L)) 
+
+
+
+xts_afgoye <-xts(afgoye_tiblle$precipitation, order.by = afgoye_tiblle$date)
+
+plot(xts_afgoye)
+
+
+class(xts_afgoye)
+
+afgoye_tiblle |> 
+  group_by(date = floor_date(date, 'year')) |>
+  summarise(aver_prec = mean(precipitation)) |> 
+  ggplot(aes(date, aver_prec)) + geom_line() +
+  geom_point() + geom_smooth(se=FALSE)
+
+custom_month_mapping <- c("JAN" = "January", "FEB" = "February", 
+                          "MAR" = "March",
+                          "APR" = "April", "MAY" = "May", 
+                          "JUN" ="June",'JUL'= "July", "AUG"= "August" ,
+                          "SEP" ="September", "OCT" ="October",
+                          "NOV" ="November", "DEC" ="December")
+
+
+
+
+
+afgoye_tiblle |> 
+  mutate(months = custom_month_mapping[months]) |> 
+  group_by(months) |>
+  summarise(aver_prec = mean(precipitation)) |> 
+  mutate(months =factor(months, levels = month.name, ordered = TRUE)) |> 
+  ggplot(aes(months, aver_prec)) + geom_col() +
+  geom_line(aes(y = aver_prec, group = 1), col='red')
+
+
+## Modelling Seasonal Data using simple Regression Analysis
+
+lm(ANN ~ year, data = afgoye_annul) |> 
+  tidy()
+
+
+model_data <- afgooye_seasonal |> 
+  group_by(year, seasons) |> 
+  summarise(mean_precipitation = mean(precipitation))
+
+model_data
+
+model_data |> 
+  group_by(seasons) |> 
+  nest() |> 
+  mutate(lm_model = map(data, ~lm(mean_precipitation ~ year, data= .x))) |> 
+  mutate(lm_tidy = map(lm_model, tidy)) |> 
+  ungroup() |> 
+  unnest(lm_tidy)
+
+qoryooley |> 
+  glimpse()
+
+
+qoryooley_df <- qoryooley |> 
+  pivot_longer(cols = JAN:DEC, names_to = 'months',
+               values_to = 'precipitation') |> 
+  mutate(months = custom_month_mapping[months],
+         date = paste(YEAR, months, 01, sep = '-')) |> 
+  mutate(date = parse_date(date, format =  "%Y-%B-%d"))
+
+qoryooley_df |> 
+  glimpse()
+
+qoryooley_df |> 
+  distinct(YEAR, .keep_all = TRUE) |> 
+  view()
+
+qoryooley_df |> 
+  ggplot(aes(date, precipitation)) +
+  geom_line() +geom_point()
+
+durbinWatsonTest(lm(Hagaa ~ YEAR, qoryooley))
+
+
+dwtest(lm(`Gu'` ~ YEAR, qoryooley))
+
+qoryoley_ann <- qoryooley |> 
+  select(ANN)
+
+qoryoley_ts <- ts(qoryoley_ann$ANN, start = 1981, frequency = 1)
+
+qoryole_deyr_ts <- ts(qoryooley$Deyr, start = 1981, frequency = 1)
+
+qoryoley_gu <- ts(qoryooley$`Gu'`,  start = 1981, frequency = 1)
+
+qoryoley_jilal <- ts(qoryooley$Jilaal,  start = 1981, frequency = 1)
+
+plot(qoryoley_ts)
+
+MannKendall(qoryoley_jilal)
+MannKendall(qoryoley_gu)
+qory_model <- arima(qoryoley_ts, order = c(1, 0, 0))
+
+pre_qoryoley <- residuals(qory_model)
+
+MannKendall(pre_qoryoley)
+
+sens.slope(pre_qoryoley)
+
+## Qoryoley seasonal data: pre-whiting before testing Mannkendall
+
+sarima(qoryole_deyr_ts, 1, 0, 0)
+
+qoryole_deyr_model <- arima(qoryole_deyr_ts, order = c(1, 0,0))
+
+deyr_prewhiting <- residuals(qoryole_deyr_model)
+
+
+autoplot(qoryole_deyr_ts) +
+  geom_point() + 
+  geom_smooth(se=FALSE) +
+  geom_smooth(method = lm, se= FALSE, linetype = 'dashed', 
+              color ='red') +
+  labs(title = 'Qoryoley Seasonal Data',
+       y = 'Average precipitation',
+       subtitle = 'Deyr season variation overlaid with both loes line and regreesion line')
+
+MannKendall(deyr_prewhiting)
+sens.slope(deyr_prewhiting)
+
+##### Qoryely gu season data after undergoing pre-whiting and tested by sen's slope and mann-kendall test
+
+
+sarima(qoryoley_gu, 1, 0, 0)
+
+gu_model <- arima(qoryoley_gu, order = c(1, 0, 0))
+
+gu_prewhiting <- residuals(gu_model)
+
+MannKendall(gu_prewhiting)
+
+sens.slope(gu_prewhiting)
+
+
+qoryole_jilal_ts <- ts(qoryooley$Jilaal, start = 1981, frequency = 1)
+
+qoryoley_jilal_model <- arima(qoryole_jilal_ts, order = c(1, 0,0))
+
+qoryoley_jilal_prewhitining <- residuals(qoryoley_jilal_model)
+
+MannKendall(qoryoley_jilal_prewhitining)
+
+sens.slope(qoryoley_jilal_prewhitining)
+
+qoryooley_df |> 
+  group_by(date = floor_date(date, 'year')) |> 
+  summarise(average_ann = mean(precipitation)) |> 
+  ggplot(aes(date, average_ann)) +
+  geom_line() +  geom_point() + 
+  geom_smooth(method = lm, se= FALSE)
+
+
+
+
+qoryooley_df
+
+qoryooley_df |> 
+  group_by(YEAR) |> 
+  summarise(annual_prec = sum(precipitation))
+
+
+qoryooley_df |> 
+  ggplot(aes(YEAR, ANN)) +
+  geom_point() + geom_line() +
+  geom_smooth(method = lm, se= FALSE) +
+  labs(title = 'Qoryoole Data',
+       subtitle = 'Annual varaions of rainfall',
+       y = 'Annual rainfall')
+
+
+qoryooley_df |> 
+  pivot_longer(cols = Jilaal:Deyr,
+               names_to = 'season',
+               values_to = 'seasonal_prec') |> 
+  group_by(YEAR, season) |> 
+  summarise(average_pre = mean(seasonal_prec)) |> 
+  ggplot(aes(YEAR, average_pre)) +
+  geom_line() +
+  facet_wrap(~ season) + geom_point() +
+  geom_smooth(method = lm, se=FALSE, aes(group = 1), col='blue') +
+  labs(title = 'Qoryoole Data',
+       subtitle = 'AVerage Seasonal varaions of rainfall')
+
+
+qoryoley_corr <- qoryooley_df |> 
+  pivot_longer(cols = Jilaal:Deyr,
+               names_to = 'season',
+               values_to = 'seasonal_prec') |> 
+  group_by(YEAR, season) |> 
+  summarise(average_pre = mean(seasonal_prec)) |> 
+  ungroup() 
+
+
+calculate_correlation <- function(qoryoley_corr) {
+  cor(qoryoley_corr$YEAR, qoryoley_corr$average_pre)
+}
+
+qoryoley_corr |> 
+  group_by(season) |> 
+  nest() |> 
+  mutate(seasonal_correlation = map(data, calculate_correlation)) |> 
+  unnest(seasonal_correlation)
+
+qoryooley_df_season <- qoryooley_df |> 
+  pivot_longer(cols = Jilaal:Deyr,
+               names_to = 'season',
+               values_to = 'seasonal_prec')
+
+
+qoryooley_df_season |> 
+  group_by(season) |> 
+  nest() |> 
+  mutate(model_lm = map(data, ~lm(seasonal_prec ~ YEAR, data= .x))) |> 
+  mutate(lm_tidy = map(model_lm, tidy)) |> 
+  ungroup() |> 
+  unnest(lm_tidy)
+
+
+equations <- qoryooley_df_season %>%
+  group_by(season) %>%
+  do(model = lm(seasonal_prec ~ YEAR, data = .)) %>%
+  summarise(eq = sprintf("y = %.2fx + %.2f", coef(model)[2], coef(model)[1]))
+
+
+equations
+
+jowhar <- read_csv("Jowhar.csv")
+
+
+jowhar |> 
+  glimpse()
+
+jowhr_lm <- lm(Hagaa ~ YEAR, jowhar)
+
+durbinWatsonTest(jowhr_lm)
+dwtest(jowhr_lm)
+
+jowhar |> 
+  ggplot(aes(YEAR, ANN)) +
+  geom_line() +
+  geom_point() + geom_smooth(method = lm, se= FALSE)
+
+
+jowhar_ts <- ts(jowhar$ANN, start = 1981, frequency = 1)
+
+MannKendall(jowhar_ts)
+sarima(jowhar_ts, 1, 0, 0)
+
+jowhar_model <- arima(jowhar_ts, order = c(1, 0, 0))
+
+jowhar_prewh <- residuals(jowhar_model)
+
+MannKendall(jowhar_prewh)
+
+sens.slope(jowhar_prewh)
+
+jowhar_deyr_ts <- ts(jowhar$Deyr, start = 1981, frequency = 1)
+
+deyr_model <- arima(jowhar_deyr_ts, order = c(1, 0, 0))
+
+deyr_prewhiting <- residuals(deyr_model)
+
+MannKendall(jowhar_deyr_ts)
+MannKendall(deyr_prewhiting)
+sens.slope(deyr_prewhiting)
+
+jowhar_gu_ts <- ts(jowhar$Gu, start = 1981, frequency = 1)
+
+MannKendall(jowhar_gu_ts)
+
+gu_model <- arima(jowhar_gu_ts, order = c(1, 0, 0))
+
+gu_prewhiting <- residuals(gu_model)
+
+MannKendall(gu_prewhiting)
+sens.slope(gu_prewhiting)
+
+
+jowhar_haga_ts <- ts(jowhar$Hagaa, start = 1981, frequency = 1)
+
+haga_model <- arima(jowhar_haga_ts, order = c(1, 0, 0))
+
+haga_prewhiting <- residuals(haga_model)
+
+MannKendall(haga_prewhiting)
+sens.slope(haga_prewhiting)
+
+
+jowhar_jilal_ts <- ts(jowhar$Jilaal, start = 1981, frequency = 1)
+
+MannKendall(jowhar_jilal_ts)
+
+jilal_model <- arima(jowhar_jilal_ts, order = c(1, 0, 0))
+
+jilal_prewhiting <- residuals(jilal_model)
+
+MannKendall(jilal_prewhiting)
+sens.slope(jilal_prewhiting)
+
+baydhabo <- read_csv("baydhabo.csv")
+
+bydhabo_months <- baydhabo |> 
+  pivot_longer(cols = January:December,
+               names_to = 'months',
+               values_to = 'precipitation') |> 
+  mutate(months = factor(months, month.name))
+
+baydhabo_lm <- lm(`Gu'` ~ Year, baydhabo)
+
+dwtest(baydhabo_lm)
+durbinWatsonTest(baydhabo_lm)
+
+baydhabo_ts <- ts(baydhabo$Annual, start = 1981, frequency = 1)
+
+MannKendall(baydhabo_ts)
+sens.slope(baydhabo_ts)
+
+baydhabo |> 
+  ggplot(aes(Year, Annual)) +
+  geom_line() + geom_point() +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(
+    title = 'Baydhabo Rainfall Dataset',
+    y = 'Average Annual Rainfall',
+    subtitle = 'Average Annual Rainfall with Regression line'
+  )
+
+baydhabo |> 
+  glimpse()
+
+bydhabo_lm <- lm(precipitation ~ Year, bydhabo_months)
+
+durbinWatsonTest(bydhabo_lm)
+
+bydhabo_ts <- ts(bydhabo_months$precipitation, start = 1981, frequency = 12)
+
+sarima(bydhabo_ts, 1, 1, 0, 1, 0, 0, 12)
+
+MannKendall(bydhabo_ts)
+
+
+
+baydhabo |> 
+  pivot_longer(cols = January:December,
+               names_to = 'months',
+               values_to = 'precipitation') |> 
+  mutate(months = factor(months, month.name)) |> 
+  ggplot(aes(Year, precipitation)) +
+  geom_point() + geom_line() +
+  facet_wrap(~ months) +
+  labs(
+    title = 'Baydhabo Rainfall Dataset',
+    y = 'Total Monthly Rainfall',
+    subtitle = 'Monthly  Rainfall with Regression line'
+  ) +
+  geom_smooth(method = lm, se= FALSE)
+
+baydhabo |> 
+  pivot_longer(cols = Jilaal:Deyr,
+               names_to = 'seasons',
+               values_to = 'precipitation') |> 
+  #mutate(months = factor(months, month.name)) |> 
+  ggplot(aes(Year, precipitation)) +
+  geom_point() + geom_line() +
+  facet_wrap(~ seasons) +
+  labs(
+    title = 'Baydhabo Rainfall Dataset',
+    y = 'Total Seasonal Rainfall',
+    subtitle = 'Seasonal  Rainfall with Regression line'
+  ) +
+  geom_smooth(method = lm, se= FALSE)
+
+
+baydhabo_model <- arima(baydhabo_ts, order = c(1, 0, 0))
+
+baydhabo_prewhiting <- residuals(baydhabo_model)
+
+MannKendall(baydhabo_prewhiting)
+
+sens.slope(baydhabo_prewhiting)
+
+baydhabo_gu <- ts(baydhabo$`Gu'`, start = 1981, frequency = 1)
+
+baydhabo_gu_model <- arima(baydhabo_gu, order = c(1, 0, 0))
+
+gu_prewhiting <- residuals(baydhabo_gu_model)
+
+MannKendall(gu_prewhiting)
+
+
+############## Deyr season
+
+baydhabo_deyr <- ts(baydhabo$Deyr, start = 1981, frequency = 1)
+
+baydhabo_deyr_model <- arima(baydhabo_deyr, order = c(1, 0, 0))
+
+deyr_prewhiting <- residuals(baydhabo_deyr_model)
+
+MannKendall(deyr_prewhiting)
+
+sens.slope(deyr_prewhiting)
+
+########## Jilal season
+baydhabo_jilal <- ts(baydhabo$Jilaal, start = 1981, frequency = 1)
+
+MannKendall(baydhabo_jilal)
+
+baydhabo_jilal_model <- arima(baydhabo_jilal, order = c(1, 0, 0))
+
+jilal_prewhiting <- residuals(baydhabo_jilal_model)
+
+MannKendall(jilal_prewhiting)
+
+sens.slope(jilal_prewhiting)
+
+############# Xaga season
+
+baydhabo_xaga <- ts(baydhabo$Xagaa, start = 1981, frequency = 1)
+
+MannKendall(baydhabo_xaga)
+
+baydhabo_xaga_model <- arima(baydhabo_xaga, order = c(1, 0, 0))
+
+xaga_prewhiting <- residuals(baydhabo_xaga_model)
+
+MannKendall(xaga_prewhiting)
+
+sens.slope(xaga_prewhiting)
+
+
+full_df <- read_csv('article_df.csv')
+
+afgoye_small <- full_df |> 
+  filter(twn == 'Afgooye') |> 
+  distinct(YEAR, .keep_all = TRUE) |> 
+  transmute(YEAR, Jilaal, `Gu'`, Hagaa, Deyr) |> 
+  pivot_longer(cols = Jilaal:Deyr)
+
+full_df |> 
+  filter(twn == 'Afgooye') |> 
+  #distinct(YEAR, .keep_all = TRUE) |> 
+  select(YEAR, months, precipitation) |> 
+  #count(YEAR) |> 
+  filter(YEAR >= 2000)
+
+
+baydhabo_small <- full_df |> 
+  filter(twn == 'Baydhabo') |> 
+  distinct(YEAR, .keep_all = TRUE) |> 
+  transmute(YEAR, Jilaal, `Gu'`, Hagaa, Deyr) |> 
+  pivot_longer(cols = Jilaal:Deyr)
+
+jowhar_small <- full_df |> 
+  filter(twn == 'Jowhar') |> 
+  distinct(YEAR, .keep_all = TRUE) |> 
+  transmute(YEAR, Jilaal, `Gu'`, Hagaa, Deyr) |> 
+  pivot_longer(cols = Jilaal:Deyr)
+
+
+qoryoley_small <- full_df |> 
+  filter(twn == 'Qoryooley') |> 
+  distinct(YEAR, .keep_all = TRUE) |> 
+  transmute(YEAR, Jilaal, `Gu'`, Hagaa, Deyr) |> 
+  pivot_longer(cols = Jilaal:Deyr)
+
+afgoye_ts <- ts(afgoye_small$value, start = 1981, frequency = 4)
+
+baydhabo_ts <- ts(baydhabo_small$value, start = 1981, frequency = 4)
+
+jowhar_ts <- ts(jowhar_small$value, start = 1981, frequency = 4)
+
+qory_ts <- ts(qoryoley_small$value, start = 1981, frequency = 4)
+
+innovtrend(afgoye_ts)
+dfcusum(afgoye_ts, startyear = 1981)
+
+title(sub = 'Afgooye seasonal trend analysis', line = -2.6)
+
+innovtrend(baydhabo_ts)
+
+title(sub = 'Baydhabo seasonal trend analysis', line = -2.6)
+
+innovtrend(jowhar_ts)
+title(sub = 'Jowhar seasonal trend analysis', line = -2.6)
+
+innovtrend(qory_ts)
+title(sub = 'Qoryooley seasonal trend analysis', line = -2.6)
+
+
+
+afgoye_small <- full_df |> 
+  filter(twn == 'Afgooye') |> 
+  distinct(YEAR, .keep_all = TRUE) |> 
+  transmute(YEAR, Jilaal, `Gu'`, Hagaa, Deyr) |> 
+  pivot_longer(cols = Jilaal:Deyr)
+
+afgoye_deyr <- afgoye_small |> 
+  filter(name == 'Deyr') |> 
+  select(value)
+
+afgoye_jilal <- afgoye_small |> 
+  filter(name == 'Jilaal') |> 
+  select(value)
+
+afgoye_deyr_ts <- ts(afgoye_deyr, start = 1981, frequency = 1)
+
+afgoye_jilal_ts <- ts(afgoye_jilal, start = 1981, frequency = 1)
+
+afgoye_jilal_ts
+
+innovtrend(afgoye_deyr_ts)
+
+innovtrend(afgoye_jilal_ts)
+
+baydhabo_small <- full_df |> 
+  filter(twn == 'Baydhabo') |> 
+  distinct(YEAR, .keep_all = TRUE) |> 
+  transmute(YEAR, Jilaal, `Gu'`, Hagaa, Deyr) |> 
+  pivot_longer(cols = Jilaal:Deyr)
+
+jowhar_small <- full_df |> 
+  filter(twn == 'Jowhar') |> 
+  distinct(YEAR, .keep_all = TRUE) |> 
+  transmute(YEAR, Jilaal, `Gu'`, Hagaa, Deyr) |> 
+  pivot_longer(cols = Jilaal:Deyr)
+
+qoryoley_small <- full_df |> 
+  filter(twn == 'Qoryooley') |> 
+  distinct(YEAR, .keep_all = TRUE) |> 
+  transmute(YEAR, Jilaal, `Gu'`, Hagaa, Deyr) |> 
+  pivot_longer(cols = Jilaal:Deyr)
+
+afgoye_ts <- ts(afgoye_small$value, start = 1981, frequency = 4) 
+
+baydhabo_ts <- ts(baydhabo_small$value, start = 1981, frequency = 4)
+
+jowhar_ts <- ts(jowhar_small$value, start = 1981, frequency = 4)
+
+qory_ts <- ts(qoryoley_small$value, start = 1981, frequency = 4)
+
+innovtrend(afgoye_ts)
+
+title(sub = 'Afgooye Station: Seasonal trend analysis', line = -24.3)
+
+innovtrend(baydhabo_ts)
+
+title(sub = 'Baydhabo Station: Seasonal trend analysis', line = -24.3)
+
+innovtrend(jowhar_ts)
+title(sub = 'Jowhar Station: Seasonal trend analysis', line = -24.3)
+
+innovtrend(qory_ts)
+title(sub = 'Qoryooley Station: Seasonal trend analysis', line = -24.3)
+
+
+full_df <- read_csv('article_df.csv')
+
+full_df |> 
+  glimpse()
+
+
+
+## AFgooye outier detection
+afgoye <- full_df |> 
+  filter(twn == 'Afgooye') |> 
+  distinct(YEAR, .keep_all = TRUE)
+
+afgoye_impute <- afgoye |> 
+  mutate( Deyr= case_when(
+    Deyr==  606.45 ~ NA,
+    .default = Deyr
+  ))
+
+
+
+afgoye_impute <- afgoye_impute |> 
+  mutate(Deyr= impute(Deyr, fun = mean))
+
+
+
+grubbs.test(afgoye$ANN)
+
+chisq.out.test(afgoye$ANN)
+
+grubbs.test(afgoye$Jilaal)
+chisq.out.test(afgoye$Jilaal)
+
+impute(afgoye_impute$Jilaal, fun = mean)
+
+
+grubbs.test(afgoye_impute$`Gu'`)
+chisq.out.test(afgoye_impute$`Gu'`)
+
+impute(afgoye_impute$`Gu'`, fun = mean)
+
+grubbs.test(afgoye_impute$Hagaa)
+
+chisq.out.test(afgoye_impute$Hagaa)
+
+impute(afgoye_impute$Hagaa, fun = mean)
+
+grubbs.test(afgoye_impute$Deyr)
+chisq.out.test(afgoye_impute$Deyr)
+
+impute(afgoye_impute$Deyr, fun = mean)
+
+
+### qoryoley
+
+qoryoley <- full_df |> 
+  filter(twn == 'Qoryooley') |> 
+  distinct(YEAR, .keep_all = TRUE)
+
+qoryoley_impute <- qoryoley |> 
+  mutate(Deyr = case_when(
+    Deyr ==   1075.78 ~ NA,
+    .default = Deyr
+  ))
+
+qoryoley
+
+
+qoryoley_impute <- qoryoley_impute |> 
+  mutate(Deyr= impute(Deyr, fun = mean))
+
+grubbs.test(qoryoley$ANN)
+chisq.out.test(qoryoley$ANN)
+
+impute(qoryoley_impute$ANN, fun = mean)
+
+grubbs.test(qoryoley$Jilaal)
+chisq.out.test(qoryoley$Jilaal)
+
+
+impute(qoryoley_impute$Jilaal, fun = mean)
+
+grubbs.test(qoryoley$`Gu'`)
+chisq.out.test(qoryoley$`Gu'`)
+impute(qoryoley_impute$`Gu'`, fun = mean)
+
+grubbs.test(qoryoley$Hagaa)
+chisq.out.test(qoryoley$Hagaa)
+impute(qoryoley_impute$Hagaa, fun = mean)
+
+
+grubbs.test(qoryoley$Deyr)
+chisq.out.test(qoryoley$Deyr)
+impute(qoryoley_impute$Deyr, fun = mean)
+
+
+## BAydhabo
+
+baydhabo <- full_df |> 
+  filter(twn == 'Baydhabo') |> 
+  distinct(YEAR, .keep_all = TRUE)
+
+baydhabo_impute <- baydhabo |> 
+  mutate(Deyr = case_when(
+    Deyr == 975.59 ~ NA,
+    .default = Deyr
+  ))
+
+
+baydhabo_impute <- baydhabo_impute |> 
+  mutate(Deyr = impute(Deyr, fun = mean))
+
+grubbs.test(baydhabo$ANN)
+
+chisq.out.test(baydhabo$ANN)
+
+impute(baydhabo_impute$ANN, fun = mean)
+
+grubbs.test(baydhabo$Jilaal)
+
+chisq.out.test(baydhabo$Jilaal)
+
+impute(baydhabo_impute$Jilaal, fun = mean)
+
+grubbs.test(baydhabo$`Gu'`)
+
+chisq.out.test(baydhabo$`Gu'`)
+
+impute(baydhabo_impute$`Gu'`, fun = mean)
+
+grubbs.test(baydhabo$Hagaa)
+
+chisq.out.test(baydhabo$Hagaa)
+
+impute(baydhabo_impute$Hagaa, fun = mean)
+
+grubbs.test(baydhabo$Deyr)
+
+chisq.out.test(baydhabo$Deyr)
+
+impute(baydhabo_impute$Deyr, fun = mean)
+
+### Jowhar outliers detection 
+
+jowhar <- full_df |> 
+  filter(twn == 'Jowhar') |> 
+  distinct(YEAR, .keep_all = TRUE)
+
+jowhar_impute <- jowhar |> 
+  mutate(Hagaa = case_when(
+    Hagaa ==   632.82 ~NA,
+    .default = Hagaa
+  ))
+
+
+
+jowhar_impute <- jowhar_impute |> 
+  mutate(Hagaa = impute(Hagaa, fun = mean))
+
+grubbs.test(jowhar$ANN)
+
+
+chisq.out.test(jowhar$ANN)
+
+impute(jowhar_impute$ANN, fun = mean)
+
+grubbs.test(jowhar$Jilaal)
+
+chisq.out.test(jowhar$Jilaal)
+
+
+grubbs.test(jowhar$`Gu'`)
+
+chisq.out.test(jowhar$`Gu'`)
+
+impute(jowhar_impute$`Gu'`, fun = mean)
+
+
+grubbs.test(jowhar$Hagaa)
+
+chisq.out.test(jowhar$Hagaa)
+
+impute(jowhar_impute$Hagaa, fun = mean)
+
+
+grubbs.test(jowhar$Deyr)
+
+chisq.out.test(jowhar$Deyr)
+
+
+full_df <- read_csv('article_df.csv')
+
+
+full_df |> 
+  pivot_longer(cols = ANN:Deyr, names_to = 'Seasons',
+               values_to = 'value') |> 
+  rename('Station' = twn) |> 
+  mutate(Seasons = case_when(
+    Seasons == "ANN" ~ 'Annual',
+    .default = Seasons
+  )) |> 
+  group_by(Station, Seasons) |> 
+  summarise(Mean = mean(value),
+            Standard.Deviation = sd(value), 
+            Min = min(value),
+            Max = max(value)) |> 
+  gt(id = 'two') |> 
+  tab_style(style = cell_text(weight = 'bold'),
+            locations = cells_column_labels()) |> 
+  tab_style(
+    style = cell_borders(
+      sides = c("top", "bottom"),
+      color = "white",
+      weight = px(1.5),
+      style = "solid"
+    ),
+    locations = cells_body()
+  ) |> 
+  tab_style(
+    style = list(
+      cell_borders(
+        sides = "bottom",
+        color = "black",
+        weight = px(2),
+        style = "solid"
+      )
+    ),
+    locations = cells_body(row = 20)
+  ) 
+
+
+new_imputed_df <- read_csv('imputed_df.csv')
+
+
+
+new_imputed_df |> 
+  rename('Station' = twn, 'Seasons' = Seasons) |> 
+  mutate(Seasons = case_when(
+    Seasons == "ANN" ~ 'Annual',
+    .default = Seasons
+  )) |> 
+  group_by(Station, Seasons) |> 
+  summarise(Mean = mean(rainfall),
+            Standard.Deviation = sd(rainfall), 
+            Minimum = min(rainfall),
+            Maximum = max(rainfall)) |> 
+  gt(id = 'two') |> 
+  tab_style(style = cell_text(weight = 'bold'),
+            locations = cells_column_labels()) |> 
+  tab_style(
+    style = cell_borders(
+      sides = c("top", "bottom"),
+      color = "white",
+      weight = px(1.5),
+      style = "solid"
+    ),
+    locations = cells_body()
+  ) |> 
+  tab_style(
+    style = list(
+      cell_borders(
+        sides = "bottom",
+        color = "black",
+        weight = px(2),
+        style = "solid"
+      )
+    ),
+    locations = cells_body(row = 20)
+  ) 
+
+full_df %>% 
+  group_by(twn) %>% 
+  distinct(YEAR, .keep_all = TRUE) %>% 
+  ggplot(aes(YEAR, ANN, col = twn)) + 
+  geom_point() + geom_line(aes(linetype = twn)) +
+  labs(x = " ", y = "Anual Precipitation (mm)",
+       caption = 'Data Source: NASAPOWER',
+       linetype = "Stations") +
+  guides(color = 'none') +
+  scale_color_manual(values = c('#1a9641', '#2c7bb6', '#ca0020', '#fdae61')) +
+  theme(legend.position = 'bottom',
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        plot.title = element_text(size = 12)
+  ) +
+  scale_x_continuous(breaks = seq(1980, 2020, by = 5)) +
+  scale_y_continuous(breaks = seq(0, 1500, by = 200)) 
+
+
+annual_df <- full_df %>% 
+  group_by(twn) %>% 
+  distinct(YEAR, .keep_all = TRUE) |> 
+  filter(YEAR <= 2020)
+
+data_r <- annual_df |> 
+  group_by(twn) |> 
+  summarise(r = cor(YEAR, ANN)) |> 
+  mutate(ANN = 1100, 
+         YEAR = 2020,
+         label = glue("r = {round(r, 3)}"))
+
+
+ggplot(annual_df ,aes(YEAR, ANN, col = twn)) + 
+  geom_point(show.legend = FALSE) + geom_line(show.legend = FALSE) +
+  geom_richtext(
+    data = data_r, aes(label = label),
+    hjust = 1, vjust = 1
+  ) +
+  facet_wrap(vars(twn), scales = 'free') +
+  geom_smooth(method = lm, se= FALSE, show.legend = FALSE) +
+  labs(x = " ", y = 'Anual Precipitation (mm)',
+       caption = 'Data Source: NASAPOWER') +
+  theme(legend.position = 'none',
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        plot.title = element_text(hjust = 0) 
+  ) +
+  scale_x_continuous(breaks = seq(1980, 2020, by = 5)) +
+  scale_y_continuous(breaks = seq(0, 1500, by = 150)) +
+  scale_color_brewer(palette = 'Dark2')
+
+
+afgoye_df <- full_df %>% 
+  pivot_longer(cols = Jilaal:Deyr, names_to = 'seasons',
+               values_to = 'seasonal_precipitation') %>% 
+  filter(twn == 'Afgooye') %>% 
+  group_by(seasons) %>% 
+  distinct(YEAR, .keep_all = TRUE)
+
+afgoye_r <- afgoye_df |> 
+  group_by(seasons) |> 
+  summarise(r = cor(YEAR, seasonal_precipitation)) |> 
+  mutate(seasonal_precipitation = 400, 
+         YEAR = 2020,
+         label = glue("r = {round(r, 3)}"))
+
+afgoye_df |>   
+  ggplot(aes(YEAR, seasonal_precipitation, col = seasons)) +
+  geom_point() + geom_line() +
+  geom_smooth(method = lm, se = FALSE) +
+  geom_richtext(
+    data = afgoye_r, aes(label = label),
+    hjust = 1, vjust = 1
+  ) +
+  facet_wrap(vars(seasons), scales = 'free') +
+  labs(
+    x = " ", y = 'Seasonal Precipitation (mm)',
+    caption = 'Data Source: NASAPOWER') +
+  scale_color_brewer(palette = 'Dark2') +
+  theme(legend.position = 'none',
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        plot.title = element_text(size = 12)
+  ) +
+  scale_x_continuous(breaks = seq(1980, 2020, by = 5)) +
+  scale_y_continuous(breaks = seq(0, 700, by = 100))
+
+
+baydhabo_df <- full_df %>% 
+  pivot_longer(cols = Jilaal:Deyr, names_to = 'seasons',
+               values_to = 'seasonal_precipitation') %>% 
+  filter(twn == 'Baydhabo') %>% 
+  group_by(seasons) %>% 
+  distinct(YEAR, .keep_all = TRUE) |> 
+  filter(YEAR <= 2020)
+
+bay_r <- baydhabo_df |> 
+  group_by(seasons) |> 
+  summarise(r = cor(YEAR, seasonal_precipitation)) |> 
+  mutate(seasonal_precipitation = 500, 
+         YEAR = 2020,
+         label = glue("r = {round(r, 3)}"))
+
+
+baydhabo_df |> 
+  ggplot(aes(YEAR, seasonal_precipitation, col = seasons)) +
+  geom_point() + geom_line() +
+  geom_richtext(
+    data = bay_r, aes(label = label),
+    hjust = 1, vjust = 1
+  ) +
+  facet_wrap(vars(seasons), scales = 'free') +
+  labs(
+    x = " ", y = 'Seasonal Precipitation (mm)',
+    caption = 'Data Source: NASAPOWER') +
+  theme(legend.position = 'none') +
+  scale_color_brewer(palette = 'Dark2') +
+  geom_smooth(method = lm, se= FALSE) +
+  theme(legend.position = 'none',
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        plot.title = element_text(size = 12)
+  ) +
+  scale_x_continuous(breaks = seq(1980, 2020, by = 5))
